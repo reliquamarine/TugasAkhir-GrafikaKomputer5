@@ -1,0 +1,27 @@
+# Visual Studio files and folders
+.vs/
+Debug/
+Release/
+x64/
+x86/
+[Aa]byss[Ee]xplorer/Debug/
+[Aa]byss[Ee]xplorer/Release/
+[Aa]byss[Ee]xplorer/x64/
+[Aa]byss[Ee]xplorer/x86/
+
+# Build artifacts
+*.obj
+*.pdb
+*.ilk
+*.idb
+*.tlog
+*.lastbuildstate
+*.log
+*.recipe
+*.iobj
+*.ipdb
+*.exe.recipe
+
+# Keep freeglut DLLs and Libs
+!freeglut/
+!freeglut.dll
