@@ -59,6 +59,11 @@ struct Bubble {
     float size;
     float maxScale;
     float wobblePhase;
+    float rotAngle;         // Sudut rotasi 3D partikel (glRotatef)
+    float rotSpeed;         // Kecepatan rotasi partikel
+    float rotAxisX;         // Komponen sumbu rotasi X
+    float rotAxisY;         // Komponen sumbu rotasi Y
+    float rotAxisZ;         // Komponen sumbu rotasi Z
     bool  active;
 };
 const int MAX_BUBBLES = 120;
@@ -197,6 +202,11 @@ void initGame() {
         bubbles[i].size = 0.12f + (rand() % 100) / 500.0f;
         bubbles[i].maxScale = 1.6f + (rand() % 100) / 100.0f;
         bubbles[i].wobblePhase = (rand() % 360) * DEG2RAD;
+        bubbles[i].rotAngle = (float)(rand() % 360);
+        bubbles[i].rotSpeed = 45.0f + (rand() % 75);
+        bubbles[i].rotAxisX = 0.3f + (rand() % 100) / 140.0f;
+        bubbles[i].rotAxisY = 0.6f + (rand() % 100) / 120.0f;
+        bubbles[i].rotAxisZ = 0.2f + (rand() % 100) / 150.0f;
         bubbles[i].active = true;
     }
 
@@ -669,7 +679,7 @@ void drawTreasureChest() {
     glPopMatrix();
 }
 
-// PARTIKEL GELEMBUNG 3D (glutSolidSphere transparan naik membesar)
+// PARTIKEL GELEMBUNG 3D (glutSolidSphere transparan naik membesar dengan rotasi 3D glRotatef)
 void drawBubbles() {
     glDepthMask(GL_FALSE); // Transparansi halus
     setMaterial(0.2f, 0.4f, 0.6f, 0.7f, 0.85f, 1.0f, 0.95f, 0.95f, 1.0f, 96.0f);
@@ -677,20 +687,32 @@ void drawBubbles() {
     for (int i = 0; i < MAX_BUBBLES; i++) {
         if (!bubbles[i].active) continue;
         glPushMatrix();
-            // Goyangan sinusoidal (wobble) pada sumbu X & Z
+            // 1. Translasi: Goyangan sinusoidal (wobble) pada sumbu X & Z dan elevasi Y
             float wobbleX = sin(globalAnimTime * 3.0f + bubbles[i].wobblePhase) * 0.25f;
             float wobbleZ = cos(globalAnimTime * 3.0f + bubbles[i].wobblePhase) * 0.25f;
-
             glTranslatef(bubbles[i].x + wobbleX, bubbles[i].y, bubbles[i].z + wobbleZ);
 
-            // Ekspansi ukuran gelembung seiring berkurangnya tekanan air saat naik
+            // 2. Rotasi: glRotatef 3D per partikel gelembung (Sesuai PPT Slide 03)
+            glRotatef(bubbles[i].rotAngle, bubbles[i].rotAxisX, bubbles[i].rotAxisY, bubbles[i].rotAxisZ);
+
+            // 3. Skalasi: Ekspansi ukuran gelembung seiring berkurangnya tekanan air saat naik
             float depthFactor = (bubbles[i].y - OCEAN_FLOOR) / (OCEAN_CEILING - OCEAN_FLOOR);
             if (depthFactor < 0.0f) depthFactor = 0.0f;
             float currentBubbleScale = (1.0f + depthFactor * bubbles[i].maxScale) * globalScale;
             glScalef(currentBubbleScale, currentBubbleScale, currentBubbleScale);
 
-            glColor4f(0.75f, 0.90f, 1.0f, 0.45f); // Gelembung air transparan berkilau
+            // Lapisan Dinding Bola Gelembung Transparan
+            glColor4f(0.75f, 0.90f, 1.0f, 0.40f);
             glutSolidSphere(bubbles[i].size, 12, 12);
+
+            // Kilau Refleksi / Titik Pantul Cahaya (Specular Glint) pada permukaan gelembung
+            // Titik kilau ini ikut berputar bersama rotasi glRotatef sehingga dinamika rotasi terlihat nyata
+            glPushMatrix();
+                glTranslatef(bubbles[i].size * 0.45f, bubbles[i].size * 0.50f, bubbles[i].size * 0.35f);
+                glColor4f(1.0f, 1.0f, 1.0f, 0.80f); // Kilau putih berkilau
+                glutSolidSphere(bubbles[i].size * 0.24f, 8, 8);
+            glPopMatrix();
+
         glPopMatrix();
     }
     glDepthMask(GL_TRUE);
@@ -923,25 +945,32 @@ void updateGame(float dt) {
     sub.propAngle += propSpeed * dt;
     if (sub.propAngle >= 360.0f) sub.propAngle -= 360.0f;
 
-    // 2. Update Partikel Gelembung
+    // 2. Update Partikel Gelembung (Translasi, Rotasi, & Siklus Hidup)
     for (int i = 0; i < MAX_BUBBLES; i++) {
         bubbles[i].y += bubbles[i].vy;
         bubbles[i].x += bubbles[i].vx;
         bubbles[i].z += bubbles[i].vz;
 
+        // Update rotasi sudut 3D gelembung
+        bubbles[i].rotAngle += bubbles[i].rotSpeed * dt;
+        if (bubbles[i].rotAngle >= 360.0f) bubbles[i].rotAngle -= 360.0f;
+
         // Reset saat mencapai langit air / permukaan
         if (bubbles[i].y > OCEAN_CEILING) {
             bubbles[i].y = OCEAN_FLOOR + (rand() % 10) * 0.5f;
+            bubbles[i].rotAngle = (float)(rand() % 360);
             // Jika kapal sedang boost, semburkan gelembung dari buritan kapal selam
             if (sub.isBoosting && (i % 3 == 0)) {
                 bubbles[i].x = sub.x - forwardX * 2.5f + ((rand() % 10) - 5) * 0.1f;
                 bubbles[i].y = sub.y - 0.2f + ((rand() % 10) - 5) * 0.1f;
                 bubbles[i].z = sub.z - forwardZ * 2.5f + ((rand() % 10) - 5) * 0.1f;
                 bubbles[i].vy = 0.12f + (rand() % 100) / 800.0f;
+                bubbles[i].rotSpeed = 120.0f + (rand() % 160); // Rotasi lebih cepat saat turbulensi boost
             } else {
                 bubbles[i].x = ((rand() % 1000) / 10.0f) - 50.0f;
                 bubbles[i].z = ((rand() % 1000) / 10.0f) - 50.0f;
                 bubbles[i].vy = 0.05f + (rand() % 100) / 1200.0f;
+                bubbles[i].rotSpeed = 45.0f + (rand() % 75);
             }
         }
     }
