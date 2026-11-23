@@ -1,5 +1,7 @@
 # Visual Studio files and folders
 .vs/
+*.user
+*.vcxproj.user
 Debug/
 Release/
 x64/
