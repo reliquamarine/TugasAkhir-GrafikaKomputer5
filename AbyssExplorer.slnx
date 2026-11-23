@@ -3,5 +3,5 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="AbyssExplorer.vcxproj" />
+  <Project Path="AbyssExplorer.vcxproj" Id="a8f7b5e2-3642-4bc2-9b71-47a15e8d8631" />
 </Solution>

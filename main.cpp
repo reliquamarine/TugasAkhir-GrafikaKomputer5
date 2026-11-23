@@ -59,6 +59,11 @@ struct Bubble {
     float size;
     float maxScale;
     float wobblePhase;
+    float rotAngle;         // Sudut rotasi 3D partikel (glRotatef)
+    float rotSpeed;         // Kecepatan rotasi partikel
+    float rotAxisX;         // Komponen sumbu rotasi X
+    float rotAxisY;         // Komponen sumbu rotasi Y
+    float rotAxisZ;         // Komponen sumbu rotasi Z
     bool  active;
 };
 const int MAX_BUBBLES = 120;
@@ -134,6 +139,9 @@ int   treasuresCollected = 0;
 bool  fishCollisionAlert = false;
 int   fishCollisionCount = 0;
 float alertTimer = 0.0f;
+float collisionPenaltyTimer = 0.0f;   // Durasi aktif penalti kecepatan (~1.0s)
+float collisionCooldownTimer = 0.0f;  // Cooldown agar benturan tidak spam setiap frame (~1.6s)
+bool  isPenalized = false;            // Status penalti benturan aktif
 float globalAnimTime = 0.0f;
 
 // Window Properties
@@ -179,6 +187,9 @@ void initGame() {
     treasuresCollected = 0;
     fishCollisionCount = 0;
     fishCollisionAlert = false;
+    isPenalized = false;
+    collisionPenaltyTimer = 0.0f;
+    collisionCooldownTimer = 0.0f;
     currentCamMode = CAM_CHASE;
     orbitYaw = 45.0f;
     orbitPitch = 25.0f;
@@ -197,6 +208,11 @@ void initGame() {
         bubbles[i].size = 0.12f + (rand() % 100) / 500.0f;
         bubbles[i].maxScale = 1.6f + (rand() % 100) / 100.0f;
         bubbles[i].wobblePhase = (rand() % 360) * DEG2RAD;
+        bubbles[i].rotAngle = (float)(rand() % 360);
+        bubbles[i].rotSpeed = 45.0f + (rand() % 75);
+        bubbles[i].rotAxisX = 0.3f + (rand() % 100) / 140.0f;
+        bubbles[i].rotAxisY = 0.6f + (rand() % 100) / 120.0f;
+        bubbles[i].rotAxisZ = 0.2f + (rand() % 100) / 150.0f;
         bubbles[i].active = true;
     }
 
@@ -669,7 +685,7 @@ void drawTreasureChest() {
     glPopMatrix();
 }
 
-// PARTIKEL GELEMBUNG 3D (glutSolidSphere transparan naik membesar)
+// PARTIKEL GELEMBUNG 3D (glutSolidSphere transparan naik membesar dengan rotasi 3D glRotatef)
 void drawBubbles() {
     glDepthMask(GL_FALSE); // Transparansi halus
     setMaterial(0.2f, 0.4f, 0.6f, 0.7f, 0.85f, 1.0f, 0.95f, 0.95f, 1.0f, 96.0f);
@@ -677,20 +693,32 @@ void drawBubbles() {
     for (int i = 0; i < MAX_BUBBLES; i++) {
         if (!bubbles[i].active) continue;
         glPushMatrix();
-            // Goyangan sinusoidal (wobble) pada sumbu X & Z
+            // 1. Translasi: Goyangan sinusoidal (wobble) pada sumbu X & Z dan elevasi Y
             float wobbleX = sin(globalAnimTime * 3.0f + bubbles[i].wobblePhase) * 0.25f;
             float wobbleZ = cos(globalAnimTime * 3.0f + bubbles[i].wobblePhase) * 0.25f;
-
             glTranslatef(bubbles[i].x + wobbleX, bubbles[i].y, bubbles[i].z + wobbleZ);
 
-            // Ekspansi ukuran gelembung seiring berkurangnya tekanan air saat naik
+            // 2. Rotasi: glRotatef 3D per partikel gelembung (Sesuai PPT Slide 03)
+            glRotatef(bubbles[i].rotAngle, bubbles[i].rotAxisX, bubbles[i].rotAxisY, bubbles[i].rotAxisZ);
+
+            // 3. Skalasi: Ekspansi ukuran gelembung seiring berkurangnya tekanan air saat naik
             float depthFactor = (bubbles[i].y - OCEAN_FLOOR) / (OCEAN_CEILING - OCEAN_FLOOR);
             if (depthFactor < 0.0f) depthFactor = 0.0f;
             float currentBubbleScale = (1.0f + depthFactor * bubbles[i].maxScale) * globalScale;
             glScalef(currentBubbleScale, currentBubbleScale, currentBubbleScale);
 
-            glColor4f(0.75f, 0.90f, 1.0f, 0.45f); // Gelembung air transparan berkilau
+            // Lapisan Dinding Bola Gelembung Transparan
+            glColor4f(0.75f, 0.90f, 1.0f, 0.40f);
             glutSolidSphere(bubbles[i].size, 12, 12);
+
+            // Kilau Refleksi / Titik Pantul Cahaya (Specular Glint) pada permukaan gelembung
+            // Titik kilau ini ikut berputar bersama rotasi glRotatef sehingga dinamika rotasi terlihat nyata
+            glPushMatrix();
+                glTranslatef(bubbles[i].size * 0.45f, bubbles[i].size * 0.50f, bubbles[i].size * 0.35f);
+                glColor4f(1.0f, 1.0f, 1.0f, 0.80f); // Kilau putih berkilau
+                glutSolidSphere(bubbles[i].size * 0.24f, 8, 8);
+            glPopMatrix();
+
         glPopMatrix();
     }
     glDepthMask(GL_TRUE);
@@ -838,13 +866,21 @@ void drawHUD() {
              globalScale, sub.scale, marineLifeScale);
     renderBitmapString(28.0f, 97.0f, GLUT_BITMAP_HELVETICA_12, buf);
 
-    // Status Tabrakan Ikan
-    if (fishCollisionAlert) {
-        glColor3f(1.0f, 0.2f, 0.2f);
-        snprintf(buf, sizeof(buf), "STATUS BIOTA: AWAS! Menabrak Ikan (%d kali)", fishCollisionCount);
+    // Status Tabrakan Ikan & Efek Penalti
+    if (isPenalized) {
+        glColor3f(1.0f, 0.20f, 0.20f);
+        snprintf(buf, sizeof(buf), "STATUS BIOTA: BENTURAN! Daya Dorong Turun (-70%%) [%.1fs]", collisionPenaltyTimer);
+    } else if (fishCollisionAlert) {
+        glColor3f(1.0f, 0.50f, 0.20f);
+        snprintf(buf, sizeof(buf), "STATUS BIOTA: AWAS! Menyerempet Ikan (%d kali)", fishCollisionCount);
     } else {
-        glColor3f(0.3f, 0.95f, 0.5f);
-        snprintf(buf, sizeof(buf), "STATUS BIOTA: Aman / Bebas Rintangan");
+        if (fishCollisionCount > 0) {
+            glColor3f(0.40f, 0.85f, 0.95f);
+            snprintf(buf, sizeof(buf), "STATUS BIOTA: Aman (Riwayat Benturan: %d kali)", fishCollisionCount);
+        } else {
+            glColor3f(0.30f, 0.95f, 0.50f);
+            snprintf(buf, sizeof(buf), "STATUS BIOTA: Aman / Bebas Rintangan");
+        }
     }
     renderBitmapString(28.0f, 75.0f, GLUT_BITMAP_HELVETICA_12, buf);
 
@@ -896,6 +932,18 @@ void drawHUD() {
 void updateGame(float dt) {
     globalAnimTime += dt;
 
+    // Update timer cooldown dan durasi penalti tabrakan biota laut
+    if (collisionCooldownTimer > 0.0f) {
+        collisionCooldownTimer -= dt;
+    }
+    if (collisionPenaltyTimer > 0.0f) {
+        collisionPenaltyTimer -= dt;
+        sub.speed *= 0.88f; // Hambatan turbulensi ekstra saat masa pemulihan benturan
+        if (collisionPenaltyTimer <= 0.0f) {
+            isPenalized = false;
+        }
+    }
+
     // 1. Update Posisi & Rotasi Kapal Selam
     // Kecepatan peluruhan (drag / redaman air laut)
     sub.speed *= 0.92f;
@@ -923,25 +971,32 @@ void updateGame(float dt) {
     sub.propAngle += propSpeed * dt;
     if (sub.propAngle >= 360.0f) sub.propAngle -= 360.0f;
 
-    // 2. Update Partikel Gelembung
+    // 2. Update Partikel Gelembung (Translasi, Rotasi, & Siklus Hidup)
     for (int i = 0; i < MAX_BUBBLES; i++) {
         bubbles[i].y += bubbles[i].vy;
         bubbles[i].x += bubbles[i].vx;
         bubbles[i].z += bubbles[i].vz;
 
+        // Update rotasi sudut 3D gelembung
+        bubbles[i].rotAngle += bubbles[i].rotSpeed * dt;
+        if (bubbles[i].rotAngle >= 360.0f) bubbles[i].rotAngle -= 360.0f;
+
         // Reset saat mencapai langit air / permukaan
         if (bubbles[i].y > OCEAN_CEILING) {
             bubbles[i].y = OCEAN_FLOOR + (rand() % 10) * 0.5f;
+            bubbles[i].rotAngle = (float)(rand() % 360);
             // Jika kapal sedang boost, semburkan gelembung dari buritan kapal selam
             if (sub.isBoosting && (i % 3 == 0)) {
                 bubbles[i].x = sub.x - forwardX * 2.5f + ((rand() % 10) - 5) * 0.1f;
                 bubbles[i].y = sub.y - 0.2f + ((rand() % 10) - 5) * 0.1f;
                 bubbles[i].z = sub.z - forwardZ * 2.5f + ((rand() % 10) - 5) * 0.1f;
                 bubbles[i].vy = 0.12f + (rand() % 100) / 800.0f;
+                bubbles[i].rotSpeed = 120.0f + (rand() % 160); // Rotasi lebih cepat saat turbulensi boost
             } else {
                 bubbles[i].x = ((rand() % 1000) / 10.0f) - 50.0f;
                 bubbles[i].z = ((rand() % 1000) / 10.0f) - 50.0f;
                 bubbles[i].vy = 0.05f + (rand() % 100) / 1200.0f;
+                bubbles[i].rotSpeed = 45.0f + (rand() % 75);
             }
         }
     }
@@ -973,10 +1028,13 @@ void updateGame(float dt) {
         float collisionDist = 2.4f * sub.scale * globalScale;
         if (distSq < collisionDist * collisionDist) {
             fishCollisionAlert = true;
-            alertTimer += dt;
-            if (alertTimer > 0.5f) {
+            // Picu penalti jika cooldown telah berakhir
+            if (collisionCooldownTimer <= 0.0f) {
                 fishCollisionCount++;
-                alertTimer = 0.0f;
+                isPenalized = true;
+                collisionPenaltyTimer = 1.0f;  // Durasi penalti kecepatan 1.0 detik
+                collisionCooldownTimer = 1.6f; // Cooldown 1.6 detik mencegah spam tabrakan per frame
+                sub.speed *= 0.25f;            // Penalti: kehilangan daya dorong (kecepatan terpangkas 75%)
             }
         }
     }
@@ -1123,8 +1181,14 @@ void specialKeys(int key, int x, int y) {
     switch (key) {
         // Navigasi Maju & Mundur
         case GLUT_KEY_UP:
-            sub.speed += 0.22f;
-            if (sub.speed > 0.85f) sub.speed = 0.85f;
+            if (isPenalized) {
+                // Selama masa penalti, daya dorong baling-baling terbatas
+                sub.speed += 0.08f;
+                if (sub.speed > 0.28f) sub.speed = 0.28f;
+            } else {
+                sub.speed += 0.22f;
+                if (sub.speed > 0.85f) sub.speed = 0.85f;
+            }
             break;
         case GLUT_KEY_DOWN:
             sub.speed -= 0.16f;
@@ -1219,8 +1283,14 @@ void normalKeys(unsigned char key, int x, int y) {
         // Kecepatan Boost & Gelembung Ekstra (Space)
         case ' ':
             sub.isBoosting = true;
-            sub.speed += 0.45f;
-            if (sub.speed > 1.4f) sub.speed = 1.4f;
+            if (isPenalized) {
+                // Boost diredam selama masa pemulihan benturan
+                sub.speed += 0.15f;
+                if (sub.speed > 0.45f) sub.speed = 0.45f;
+            } else {
+                sub.speed += 0.45f;
+                if (sub.speed > 1.4f) sub.speed = 1.4f;
+            }
             break;
 
         // Skala Semua Objek / Skala Global (+ / -)
@@ -1236,30 +1306,55 @@ void normalKeys(unsigned char key, int x, int y) {
             break;
 
         // Rotasi Kamera Bebas Orbit 360 (I / J / K / L)
+        // Sesuai PPT Slide 04 & 05: Penekanan I/J/K/L langsung mengaktifkan dan mengontrol kamera orbit
         case 'i':
         case 'I':
+            if (currentCamMode == CAM_CHASE) {
+                currentCamMode = CAM_ORBIT;
+                orbitYaw = sub.yaw + 180.0f;
+                orbitPitch = 18.0f;
+            }
             orbitPitch += 3.5f;
             if (orbitPitch > 85.0f) orbitPitch = 85.0f;
             break;
         case 'k':
         case 'K':
+            if (currentCamMode == CAM_CHASE) {
+                currentCamMode = CAM_ORBIT;
+                orbitYaw = sub.yaw + 180.0f;
+                orbitPitch = 18.0f;
+            }
             orbitPitch -= 3.5f;
             if (orbitPitch < -45.0f) orbitPitch = -45.0f;
             break;
         case 'j':
         case 'J':
+            if (currentCamMode == CAM_CHASE) {
+                currentCamMode = CAM_ORBIT;
+                orbitYaw = sub.yaw + 180.0f;
+                orbitPitch = 18.0f;
+            }
             orbitYaw += 4.5f;
+            if (orbitYaw >= 360.0f) orbitYaw -= 360.0f;
             break;
         case 'l':
         case 'L':
+            if (currentCamMode == CAM_CHASE) {
+                currentCamMode = CAM_ORBIT;
+                orbitYaw = sub.yaw + 180.0f;
+                orbitPitch = 18.0f;
+            }
             orbitYaw -= 4.5f;
+            if (orbitYaw < 0.0f) orbitYaw += 360.0f;
             break;
 
-        // Ganti Mode Kamera (C)
+        // Ganti Mode Kamera (C) - Kontrol Tambahan Fleksibel
         case 'c':
         case 'C':
             if (currentCamMode == CAM_CHASE) {
                 currentCamMode = CAM_ORBIT;
+                orbitYaw = sub.yaw + 180.0f;
+                orbitPitch = 18.0f;
             } else {
                 currentCamMode = CAM_CHASE;
             }
