@@ -139,6 +139,9 @@ int   treasuresCollected = 0;
 bool  fishCollisionAlert = false;
 int   fishCollisionCount = 0;
 float alertTimer = 0.0f;
+float collisionPenaltyTimer = 0.0f;   // Durasi aktif penalti kecepatan (~1.0s)
+float collisionCooldownTimer = 0.0f;  // Cooldown agar benturan tidak spam setiap frame (~1.6s)
+bool  isPenalized = false;            // Status penalti benturan aktif
 float globalAnimTime = 0.0f;
 
 // Window Properties
@@ -184,6 +187,9 @@ void initGame() {
     treasuresCollected = 0;
     fishCollisionCount = 0;
     fishCollisionAlert = false;
+    isPenalized = false;
+    collisionPenaltyTimer = 0.0f;
+    collisionCooldownTimer = 0.0f;
     currentCamMode = CAM_CHASE;
     orbitYaw = 45.0f;
     orbitPitch = 25.0f;
@@ -860,13 +866,21 @@ void drawHUD() {
              globalScale, sub.scale, marineLifeScale);
     renderBitmapString(28.0f, 97.0f, GLUT_BITMAP_HELVETICA_12, buf);
 
-    // Status Tabrakan Ikan
-    if (fishCollisionAlert) {
-        glColor3f(1.0f, 0.2f, 0.2f);
-        snprintf(buf, sizeof(buf), "STATUS BIOTA: AWAS! Menabrak Ikan (%d kali)", fishCollisionCount);
+    // Status Tabrakan Ikan & Efek Penalti
+    if (isPenalized) {
+        glColor3f(1.0f, 0.20f, 0.20f);
+        snprintf(buf, sizeof(buf), "STATUS BIOTA: BENTURAN! Daya Dorong Turun (-70%%) [%.1fs]", collisionPenaltyTimer);
+    } else if (fishCollisionAlert) {
+        glColor3f(1.0f, 0.50f, 0.20f);
+        snprintf(buf, sizeof(buf), "STATUS BIOTA: AWAS! Menyerempet Ikan (%d kali)", fishCollisionCount);
     } else {
-        glColor3f(0.3f, 0.95f, 0.5f);
-        snprintf(buf, sizeof(buf), "STATUS BIOTA: Aman / Bebas Rintangan");
+        if (fishCollisionCount > 0) {
+            glColor3f(0.40f, 0.85f, 0.95f);
+            snprintf(buf, sizeof(buf), "STATUS BIOTA: Aman (Riwayat Benturan: %d kali)", fishCollisionCount);
+        } else {
+            glColor3f(0.30f, 0.95f, 0.50f);
+            snprintf(buf, sizeof(buf), "STATUS BIOTA: Aman / Bebas Rintangan");
+        }
     }
     renderBitmapString(28.0f, 75.0f, GLUT_BITMAP_HELVETICA_12, buf);
 
@@ -917,6 +931,18 @@ void drawHUD() {
 
 void updateGame(float dt) {
     globalAnimTime += dt;
+
+    // Update timer cooldown dan durasi penalti tabrakan biota laut
+    if (collisionCooldownTimer > 0.0f) {
+        collisionCooldownTimer -= dt;
+    }
+    if (collisionPenaltyTimer > 0.0f) {
+        collisionPenaltyTimer -= dt;
+        sub.speed *= 0.88f; // Hambatan turbulensi ekstra saat masa pemulihan benturan
+        if (collisionPenaltyTimer <= 0.0f) {
+            isPenalized = false;
+        }
+    }
 
     // 1. Update Posisi & Rotasi Kapal Selam
     // Kecepatan peluruhan (drag / redaman air laut)
@@ -1002,10 +1028,13 @@ void updateGame(float dt) {
         float collisionDist = 2.4f * sub.scale * globalScale;
         if (distSq < collisionDist * collisionDist) {
             fishCollisionAlert = true;
-            alertTimer += dt;
-            if (alertTimer > 0.5f) {
+            // Picu penalti jika cooldown telah berakhir
+            if (collisionCooldownTimer <= 0.0f) {
                 fishCollisionCount++;
-                alertTimer = 0.0f;
+                isPenalized = true;
+                collisionPenaltyTimer = 1.0f;  // Durasi penalti kecepatan 1.0 detik
+                collisionCooldownTimer = 1.6f; // Cooldown 1.6 detik mencegah spam tabrakan per frame
+                sub.speed *= 0.25f;            // Penalti: kehilangan daya dorong (kecepatan terpangkas 75%)
             }
         }
     }
@@ -1152,8 +1181,14 @@ void specialKeys(int key, int x, int y) {
     switch (key) {
         // Navigasi Maju & Mundur
         case GLUT_KEY_UP:
-            sub.speed += 0.22f;
-            if (sub.speed > 0.85f) sub.speed = 0.85f;
+            if (isPenalized) {
+                // Selama masa penalti, daya dorong baling-baling terbatas
+                sub.speed += 0.08f;
+                if (sub.speed > 0.28f) sub.speed = 0.28f;
+            } else {
+                sub.speed += 0.22f;
+                if (sub.speed > 0.85f) sub.speed = 0.85f;
+            }
             break;
         case GLUT_KEY_DOWN:
             sub.speed -= 0.16f;
@@ -1248,8 +1283,14 @@ void normalKeys(unsigned char key, int x, int y) {
         // Kecepatan Boost & Gelembung Ekstra (Space)
         case ' ':
             sub.isBoosting = true;
-            sub.speed += 0.45f;
-            if (sub.speed > 1.4f) sub.speed = 1.4f;
+            if (isPenalized) {
+                // Boost diredam selama masa pemulihan benturan
+                sub.speed += 0.15f;
+                if (sub.speed > 0.45f) sub.speed = 0.45f;
+            } else {
+                sub.speed += 0.45f;
+                if (sub.speed > 1.4f) sub.speed = 1.4f;
+            }
             break;
 
         // Skala Semua Objek / Skala Global (+ / -)
