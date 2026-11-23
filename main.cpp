@@ -1306,30 +1306,55 @@ void normalKeys(unsigned char key, int x, int y) {
             break;
 
         // Rotasi Kamera Bebas Orbit 360 (I / J / K / L)
+        // Sesuai PPT Slide 04 & 05: Penekanan I/J/K/L langsung mengaktifkan dan mengontrol kamera orbit
         case 'i':
         case 'I':
+            if (currentCamMode == CAM_CHASE) {
+                currentCamMode = CAM_ORBIT;
+                orbitYaw = sub.yaw + 180.0f;
+                orbitPitch = 18.0f;
+            }
             orbitPitch += 3.5f;
             if (orbitPitch > 85.0f) orbitPitch = 85.0f;
             break;
         case 'k':
         case 'K':
+            if (currentCamMode == CAM_CHASE) {
+                currentCamMode = CAM_ORBIT;
+                orbitYaw = sub.yaw + 180.0f;
+                orbitPitch = 18.0f;
+            }
             orbitPitch -= 3.5f;
             if (orbitPitch < -45.0f) orbitPitch = -45.0f;
             break;
         case 'j':
         case 'J':
+            if (currentCamMode == CAM_CHASE) {
+                currentCamMode = CAM_ORBIT;
+                orbitYaw = sub.yaw + 180.0f;
+                orbitPitch = 18.0f;
+            }
             orbitYaw += 4.5f;
+            if (orbitYaw >= 360.0f) orbitYaw -= 360.0f;
             break;
         case 'l':
         case 'L':
+            if (currentCamMode == CAM_CHASE) {
+                currentCamMode = CAM_ORBIT;
+                orbitYaw = sub.yaw + 180.0f;
+                orbitPitch = 18.0f;
+            }
             orbitYaw -= 4.5f;
+            if (orbitYaw < 0.0f) orbitYaw += 360.0f;
             break;
 
-        // Ganti Mode Kamera (C)
+        // Ganti Mode Kamera (C) - Kontrol Tambahan Fleksibel
         case 'c':
         case 'C':
             if (currentCamMode == CAM_CHASE) {
                 currentCamMode = CAM_ORBIT;
+                orbitYaw = sub.yaw + 180.0f;
+                orbitPitch = 18.0f;
             } else {
                 currentCamMode = CAM_CHASE;
             }
