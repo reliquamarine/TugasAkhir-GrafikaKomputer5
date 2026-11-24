@@ -92,16 +92,31 @@
 
 ## Petunjuk Menjalankan di Visual Studio
 
-1. Buka file **`AbyssExplorer.sln`** (atau **`AbyssExplorer.slnx`**) di Visual Studio.
-2. Pastikan target konfigurasi disetel ke **`Debug`** atau **`Release`** dengan platform **`x86`** (Win32).
-3. Tekan **`F5`** (atau **`Ctrl + F5`**) untuk mengompilasi dan langsung menjalankan program.
-4. *Catatan Portabilitas:* Seluruh pustaka FreeGLUT (`freeglut.h`, `glut.h`, `freeglut.lib`, `freeglut.dll`) telah disertakan langsung di dalam folder proyek, sehingga proyek ini bersifat mandiri (*self-contained*). `freeglut.dll` otomatis disalin ke folder output lewat *Post-Build Event*.
+> ⚠️ **PENTING:** Buka file **`AbyssExplorer.sln`**, **JANGAN** membuka foldernya lewat *File → Open → Folder*.
+> Kalau yang terbuka hanya folder, jendela **Solution Explorer** akan bertuliskan **"Folder View"** dan tombol **F5 tidak akan bisa menjalankan apa pun** (muncul pesan *"This project may be compatible for remote development"*). Itu bukan project, hanya penampil file.
+
+Langkah yang benar:
+
+1. Tutup Visual Studio. Hapus folder `.vs` di `D:\Project UAS Grafkom` (folder tersembunyi) agar cache lama hilang.
+2. Buka Visual Studio → **File → Open → Project/Solution…**
+3. Pilih **`D:\Project UAS Grafkom\AbyssExplorer.sln`** → **Open**.
+4. Pastikan **Solution Explorer** menampilkan pohon: *Solution 'AbyssExplorer' → AbyssExplorer → Source Files → main.cpp* (bukan tulisan "Folder View").
+5. Pastikan toolbar menampilkan **`Debug`** dan **`x86`**.
+6. Tekan **F5** (atau **`Ctrl + F5`**).
+
+### Kalau masih tidak bisa: pakai `run.bat`
+
+Klik dua kali **`run.bat`** di folder project. Script ini otomatis mencari compiler Visual Studio, mengompilasi `main.cpp`, menyalin `freeglut.dll`, lalu langsung menjalankan program — tanpa perlu membuka IDE sama sekali.
 
 ### Troubleshooting
 
-- **"unresolved external symbol __imp_glutInit..." / "cannot start debugging"**  
-  Pastikan platform di toolbar Visual Studio adalah **x86**, bukan **x64**. Library `freeglut.lib` yang disertakan hanya versi 32-bit, sehingga konfigurasi x64 sengaja tidak disediakan.
+- **Solution Explorer bertulis "Folder View" / toolbar menampilkan nama folder**  
+  Berarti yang dibuka adalah folder, bukan solution. Ulangi langkah 2–3 di atas.
+- **"unresolved external symbol __imp_glutInit..."**  
+  Platform salah (x64). Library `freeglut.lib` di project ini hanya versi 32-bit, jadi **wajib x86**. Konfigurasi x64 sudah dihapus dari solution.
 - **"The code execution cannot proceed because freeglut.dll was not found"**  
-  Lakukan **Build > Rebuild Solution**; Post-Build Event akan menyalin DLL ke `Debug\` / `Release\`.
+  Lakukan **Build → Rebuild Solution**; Post-Build Event menyalin DLL otomatis ke `Debug\` / `Release\`.
+- **"cannot start debugging because the debug target is missing"**  
+  Klik kanan project **AbyssExplorer** di Solution Explorer → **Set as Startup Project**.
 - **Error C4996 (sprintf)**  
   Sudah ditangani dengan `#define _CRT_SECURE_NO_WARNINGS` di baris pertama `main.cpp`.
