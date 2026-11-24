@@ -95,4 +95,13 @@
 1. Buka file **`AbyssExplorer.sln`** (atau **`AbyssExplorer.slnx`**) di Visual Studio.
 2. Pastikan target konfigurasi disetel ke **`Debug`** atau **`Release`** dengan platform **`x86`** (Win32).
 3. Tekan **`F5`** (atau **`Ctrl + F5`**) untuk mengompilasi dan langsung menjalankan program.
-4. *Catatan Portabilitas:* Seluruh pustaka FreeGLUT (`freeglut.h`, `glut.h`, `freeglut.lib`, `freeglut.dll`) telah disertakan langsung di dalam folder proyek, sehingga proyek ini bersifat mandiri (*self-contained*).
+4. *Catatan Portabilitas:* Seluruh pustaka FreeGLUT (`freeglut.h`, `glut.h`, `freeglut.lib`, `freeglut.dll`) telah disertakan langsung di dalam folder proyek, sehingga proyek ini bersifat mandiri (*self-contained*). `freeglut.dll` otomatis disalin ke folder output lewat *Post-Build Event*.
+
+### Troubleshooting
+
+- **"unresolved external symbol __imp_glutInit..." / "cannot start debugging"**  
+  Pastikan platform di toolbar Visual Studio adalah **x86**, bukan **x64**. Library `freeglut.lib` yang disertakan hanya versi 32-bit, sehingga konfigurasi x64 sengaja tidak disediakan.
+- **"The code execution cannot proceed because freeglut.dll was not found"**  
+  Lakukan **Build > Rebuild Solution**; Post-Build Event akan menyalin DLL ke `Debug\` / `Release\`.
+- **Error C4996 (sprintf)**  
+  Sudah ditangani dengan `#define _CRT_SECURE_NO_WARNINGS` di baris pertama `main.cpp`.
